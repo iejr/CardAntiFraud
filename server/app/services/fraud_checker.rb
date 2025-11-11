@@ -10,47 +10,49 @@ class FraudChecker
   # main entry: returns {decision: "accept"|"decline", reasons: [], metrics: {}}
   def run
     build_tx_attrs
-    metrics = snapshot_metrics
-    reasons = []
+    check_metrics
 
-    # perform checks, append reasons if tripped
-    rules.each do |name, rule|
-      case name.to_s
-      when "card_merchant"
-        count = metrics[:card_merchant_count]
-        if count > rule[:threshold]
-          reasons << "too_many_tx_for_card_at_merchant (#{count} > #{rule['threshold']})"
-        end
-      when "card_global"
-        count = metrics[:card_global_count]
-        if count > rule[:threshold]
-          reasons << "too_many_tx_for_card (#{count} > #{rule['threshold']})"
-        end
-      when "card_low_value"
-        count = metrics[:card_low_value_count]
-        if count > rule[:threshold]
-          reasons << "too_many_low_value_tx_for_card (#{count} > #{rule['threshold']})"
-        end
-      when "ip_merchant"
-        count = metrics[:ip_merchant_count]
-        if count > rule[:threshold]
-          reasons << "too_many_tx_from_ip_at_merchant (#{count} > #{rule['threshold']})"
-        end
-      when "ip_global"
-        count = metrics[:ip_global_count]
-        if count > rule[:threshold]
-          reasons << "too_many_tx_from_ip (#{count} > #{rule['threshold']})"
-        end
-      when "ip_low_value"
-        count = metrics[:ip_low_value_count]
-        if count > rule[:threshold]
-          reasons << "too_many_low_value_tx_from_ip (#{count} > #{rule['threshold']})"
-        end
-      end
-    end
+    # metrics = snapshot_metrics
+    # reasons = []
 
-    decision = reasons.empty? ? "accept" : "decline"
-    { decision: decision, reasons: reasons, metrics: metrics }
+    # # perform checks, append reasons if tripped
+    # rules.each do |name, rule|
+    #   case name.to_s
+    #   when "card_merchant"
+    #     count = metrics[:card_merchant_count]
+    #     if count > rule[:threshold]
+    #       reasons << "too_many_tx_for_card_at_merchant (#{count} > #{rule['threshold']})"
+    #     end
+    #   when "card_global"
+    #     count = metrics[:card_global_count]
+    #     if count > rule[:threshold]
+    #       reasons << "too_many_tx_for_card (#{count} > #{rule['threshold']})"
+    #     end
+    #   when "card_low_value"
+    #     count = metrics[:card_low_value_count]
+    #     if count > rule[:threshold]
+    #       reasons << "too_many_low_value_tx_for_card (#{count} > #{rule['threshold']})"
+    #     end
+    #   when "ip_merchant"
+    #     count = metrics[:ip_merchant_count]
+    #     if count > rule[:threshold]
+    #       reasons << "too_many_tx_from_ip_at_merchant (#{count} > #{rule['threshold']})"
+    #     end
+    #   when "ip_global"
+    #     count = metrics[:ip_global_count]
+    #     if count > rule[:threshold]
+    #       reasons << "too_many_tx_from_ip (#{count} > #{rule['threshold']})"
+    #     end
+    #   when "ip_low_value"
+    #     count = metrics[:ip_low_value_count]
+    #     if count > rule[:threshold]
+    #       reasons << "too_many_low_value_tx_from_ip (#{count} > #{rule['threshold']})"
+    #     end
+    #   end
+    # end
+
+    # decision = reasons.empty? ? "accept" : "decline"
+    # { decision: decision, reasons: reasons, metrics: metrics }
   end
 
   private
@@ -76,6 +78,149 @@ class FraudChecker
     }
   end
 
+  def check_metrics
+    # Loop rules from config and check the event one by one; 
+    # Return declined with reason when any rule check fails, otherwise return accept
+    card = tx_attrs[:card_number_hashed]
+    merchant = tx_attrs[:merchant_uuid]
+    ip = tx_attrs[:customer_ip]
+    reasons = []
+
+    if !check_card_merchant(rules, card, merchant, ip)
+      return { decision: "decline", reasons: "too_many_tx_for_card_at_merchant" }
+    end
+
+    if !check_card_global(rules, card, merchant, ip)
+      return { decision: "decline", reasons: "too_many_tx_for_card" }
+    end
+
+    if !check_card_low_value(rules, card, merchant, ip)
+      return { decision: "decline", reasons: "too_many_low_value_tx_for_card" }
+    end
+
+    if !check_ip_merchant(rules, card, merchant, ip)
+      return { decision: "decline", reasons: "too_many_tx_from_ip_at_merchant" }
+    end
+
+    if !check_ip_global(rules, card, merchant, ip)
+      return { decision: "decline", reasons: "too_many_tx_from_ip" }
+    end
+
+    if !check_ip_low_value(rules, card, merchant, ip)
+      return { decision: "decline", reasons: "too_many_low_value_tx_from_ip" }
+    end
+
+    { decision: "accept" }
+  end
+
+  def check_card_merchant(rules, card, merchant, ip)
+    rule = rules[:card_merchant]
+    if !rule
+      return true
+    end
+
+    window_size = rule[:window_seconds].to_i
+    window_start = now - window_size.seconds
+    count = Transaction
+      .where(card_number_hashed: card, merchant_uuid: merchant)
+      .where('event_timestamp >= ?', window_start)
+      .count
+
+    Rails.logger.info({
+      now: now,
+      window_size: window_size,
+      window_start: window_start,
+      count: count,
+      threshold: rule[:threshold]
+    })
+
+    count < rule[:threshold]
+  end
+
+  def check_card_global(rules, card, merchant, ip)
+    rule = rules[:card_global]
+    if !rule
+      return true
+    end
+
+    window_size = rule[:window_seconds].to_i
+    window_start = now - window_size.seconds
+    count = Transaction
+      .where(card_number_hashed: card)
+      .where('event_timestamp >= ?', window_start)
+      .count
+
+    count < rule[:threshold]
+  end
+
+  def check_card_low_value(rules, card, merchant, ip)
+    rule = rules[:card_low_value]
+    if !rule
+      return true
+    end
+
+    window_size = rule[:window_seconds].to_i
+    window_start = now - window_size.seconds
+    low_value_threshold = rule[:low_value_amount]
+    count = Transaction
+      .where(card_number_hashed: card)
+      .where('amount <= ?', low_value_threshold)
+      .where('event_timestamp >= ?', window_start)
+      .count
+
+    count < rule[:threshold]
+  end
+
+  def check_ip_merchant(rules, card, merchant, ip)
+    rule = rules[:ip_merchant]
+    if !rule
+      return true
+    end
+
+    window_size = rule[:window_seconds].to_i
+    window_start = now - window_size.seconds
+    count = Transaction
+      .where(customer_ip: ip, merchant_uuid: merchant)
+      .where('event_timestamp >= ?', window_start)
+      .count
+
+    count < rule[:threshold]
+  end
+
+  def check_ip_global(rules, card, merchant, ip)
+    rule = rules[:ip_global]
+    if !rule
+      return true
+    end
+
+    window_size = rule[:window_seconds].to_i
+    window_start = now - window_size.seconds
+    count = Transaction
+      .where(customer_ip: ip)
+      .where('event_timestamp >= ?', window_start)
+      .count
+
+    count < rule[:threshold]
+  end
+
+  def check_ip_low_value(rules, card, merchant, ip)
+    rule = rules[:ip_low_value]
+    if !rule
+      return true
+    end
+
+    window_size = rule[:window_seconds].to_i
+    window_start = now - window_size.seconds
+    low_value_threshold = rule[:low_value_amount]
+    count = Transaction
+      .where(customer_ip: ip)
+      .where('amount <= ?', low_value_threshold)
+      .where('event_timestamp >= ?', window_start)
+      .count
+
+    count < rule[:threshold]
+  end
+
   # snapshot metrics by running efficient SQL counts within configured window(s)
   def snapshot_metrics
     # compute earliest timestamp for each rule; for now we use window_seconds from card_merchant rule (or default)
@@ -95,39 +240,39 @@ class FraudChecker
     # 1) card + merchant
     card_merchant_count = Transaction
       .where(card_number_hashed: card, merchant_uuid: merchant)
-      .where('created_at >= ?', window_start)
+      .where('event_timestamp >= ?', window_start)
       .count
 
     # 2) card global
     card_global_count = Transaction
       .where(card_number_hashed: card)
-      .where('created_at >= ?', window_start)
+      .where('event_timestamp >= ?', window_start)
       .count
 
     # 3) card low value
     card_low_value_count = Transaction
       .where(card_number_hashed: card)
       .where('amount <= ?', low_value_threshold)
-      .where('created_at >= ?', window_start)
+      .where('event_timestamp >= ?', window_start)
       .count
 
     # 4) ip + merchant
     ip_merchant_count = Transaction
       .where(customer_ip: ip, merchant_uuid: merchant)
-      .where('created_at >= ?', window_start)
+      .where('event_timestamp >= ?', window_start)
       .count
 
     # 5) ip global
     ip_global_count = Transaction
       .where(customer_ip: ip)
-      .where('created_at >= ?', window_start)
+      .where('event_timestamp >= ?', window_start)
       .count
 
     # 6) ip low value
     ip_low_value_count = Transaction
       .where(customer_ip: ip)
       .where('amount <= ?', low_value_threshold)
-      .where('created_at >= ?', window_start)
+      .where('event_timestamp >= ?', window_start)
       .count
 
     {
