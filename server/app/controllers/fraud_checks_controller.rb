@@ -7,10 +7,6 @@ class FraudChecksController < ApplicationController
     checker = FraudChecker.new(payload)
     result = checker.run
     
-    Rails.logger.info({
-      checker_run: result
-    })
-
     # persist transaction and decision
     tx = Transaction.create!(checker.tx_attrs)
     FraudDecision.create!(

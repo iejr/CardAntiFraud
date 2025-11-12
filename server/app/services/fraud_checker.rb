@@ -126,14 +126,6 @@ class FraudChecker
       .where('event_timestamp >= ?', window_start)
       .count
 
-    Rails.logger.info({
-      now: now,
-      window_size: window_size,
-      window_start: window_start,
-      count: count,
-      threshold: rule[:threshold]
-    })
-
     count < rule[:threshold]
   end
 
