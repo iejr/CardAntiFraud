@@ -84,35 +84,36 @@ class FraudChecker
     card = tx_attrs[:card_number_hashed]
     merchant = tx_attrs[:merchant_uuid]
     ip = tx_attrs[:customer_ip]
+    amount = tx_attrs[:amount].to_i
     
-    if !check_card_merchant(rules, card, merchant, ip)
+    if !check_card_merchant(rules, card, merchant)
       return { decision: "decline", reason: "too_many_tx_for_card_at_merchant" }
     end
 
-    if !check_card_global(rules, card, merchant, ip)
+    if !check_card_global(rules, card, merchant)
       return { decision: "decline", reason: "too_many_tx_for_card" }
     end
 
-    if !check_card_low_value(rules, card, merchant, ip)
+    if !check_card_low_value(rules, card, merchant, amount)
       return { decision: "decline", reason: "too_many_low_value_tx_for_card" }
     end
 
-    if !check_ip_merchant(rules, card, merchant, ip)
+    if !check_ip_merchant(rules, merchant, ip)
       return { decision: "decline", reason: "too_many_tx_from_ip_at_merchant" }
     end
 
-    if !check_ip_global(rules, card, merchant, ip)
+    if !check_ip_global(rules, merchant, ip)
       return { decision: "decline", reason: "too_many_tx_from_ip" }
     end
 
-    if !check_ip_low_value(rules, card, merchant, ip)
+    if !check_ip_low_value(rules, merchant, ip, amount)
       return { decision: "decline", reason: "too_many_low_value_tx_from_ip" }
     end
 
     { decision: "accept" }
   end
 
-  def check_card_merchant(rules, card, merchant, ip)
+  def check_card_merchant(rules, card, merchant)
     rule = rules[:card_merchant]
     if !rule
       return true
@@ -136,7 +137,7 @@ class FraudChecker
     count < rule[:threshold]
   end
 
-  def check_card_global(rules, card, merchant, ip)
+  def check_card_global(rules, card, merchant)
     rule = rules[:card_global]
     if !rule
       return true
@@ -152,7 +153,7 @@ class FraudChecker
     count < rule[:threshold]
   end
 
-  def check_card_low_value(rules, card, merchant, ip)
+  def check_card_low_value(rules, card, merchant, amount)
     rule = rules[:card_low_value]
     if !rule
       return true
@@ -161,6 +162,10 @@ class FraudChecker
     window_size = rule[:window_seconds].to_i
     window_start = now - window_size.seconds
     low_value_threshold = rule[:low_value_amount]
+    if amount > low_value_threshold
+      return true
+    end
+
     count = Transaction
       .where(card_number_hashed: card)
       .where('amount <= ?', low_value_threshold)
@@ -170,7 +175,7 @@ class FraudChecker
     count < rule[:threshold]
   end
 
-  def check_ip_merchant(rules, card, merchant, ip)
+  def check_ip_merchant(rules, merchant, ip)
     rule = rules[:ip_merchant]
     if !rule
       return true
@@ -186,7 +191,7 @@ class FraudChecker
     count < rule[:threshold]
   end
 
-  def check_ip_global(rules, card, merchant, ip)
+  def check_ip_global(rules, merchant, ip)
     rule = rules[:ip_global]
     if !rule
       return true
@@ -202,7 +207,7 @@ class FraudChecker
     count < rule[:threshold]
   end
 
-  def check_ip_low_value(rules, card, merchant, ip)
+  def check_ip_low_value(rules, merchant, ip, amount)
     rule = rules[:ip_low_value]
     if !rule
       return true
@@ -211,6 +216,10 @@ class FraudChecker
     window_size = rule[:window_seconds].to_i
     window_start = now - window_size.seconds
     low_value_threshold = rule[:low_value_amount]
+    if amount > low_value_threshold
+      return true
+    end
+
     count = Transaction
       .where(customer_ip: ip)
       .where('amount <= ?', low_value_threshold)
