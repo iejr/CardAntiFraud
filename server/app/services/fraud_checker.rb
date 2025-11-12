@@ -84,30 +84,29 @@ class FraudChecker
     card = tx_attrs[:card_number_hashed]
     merchant = tx_attrs[:merchant_uuid]
     ip = tx_attrs[:customer_ip]
-    reasons = []
-
+    
     if !check_card_merchant(rules, card, merchant, ip)
-      return { decision: "decline", reasons: "too_many_tx_for_card_at_merchant" }
+      return { decision: "decline", reason: "too_many_tx_for_card_at_merchant" }
     end
 
     if !check_card_global(rules, card, merchant, ip)
-      return { decision: "decline", reasons: "too_many_tx_for_card" }
+      return { decision: "decline", reason: "too_many_tx_for_card" }
     end
 
     if !check_card_low_value(rules, card, merchant, ip)
-      return { decision: "decline", reasons: "too_many_low_value_tx_for_card" }
+      return { decision: "decline", reason: "too_many_low_value_tx_for_card" }
     end
 
     if !check_ip_merchant(rules, card, merchant, ip)
-      return { decision: "decline", reasons: "too_many_tx_from_ip_at_merchant" }
+      return { decision: "decline", reason: "too_many_tx_from_ip_at_merchant" }
     end
 
     if !check_ip_global(rules, card, merchant, ip)
-      return { decision: "decline", reasons: "too_many_tx_from_ip" }
+      return { decision: "decline", reason: "too_many_tx_from_ip" }
     end
 
     if !check_ip_low_value(rules, card, merchant, ip)
-      return { decision: "decline", reasons: "too_many_low_value_tx_from_ip" }
+      return { decision: "decline", reason: "too_many_low_value_tx_from_ip" }
     end
 
     { decision: "accept" }

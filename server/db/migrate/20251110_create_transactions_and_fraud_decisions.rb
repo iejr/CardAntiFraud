@@ -24,8 +24,7 @@ class CreateTransactionsAndFraudDecisions < ActiveRecord::Migration[7.0]
     create_table :fraud_decisions do |t|
       t.integer :transaction_id, null: false, index: true
       t.string  :decision, null: false # "accept" or "decline"
-      t.json    :reasons, default: []
-      t.json    :metrics_snapshot, default: {}
+      t.string  :reason, default: ""
       t.timestamps
     end
 
