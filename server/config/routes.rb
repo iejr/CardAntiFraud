@@ -7,4 +7,7 @@ Rails.application.routes.draw do
 
   # Defines the root path route ("/")
   # root "posts#index"
+
+  # Defines the fraud check endpoint
+  post '/fraud_checks', to: 'fraud_checks#create'
 end

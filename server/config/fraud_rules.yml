@@ -1,0 +1,25 @@
+defaults: &defaults
+  rules:
+    card_merchant:
+      threshold: 5
+      window_seconds: 60
+    card_global:
+      threshold: 10
+      window_seconds: 60
+    card_low_value:
+      threshold: 8
+      window_seconds: 60
+      low_value_amount: 200
+    ip_merchant:
+      threshold: 6
+      window_seconds: 60
+    ip_global:
+      threshold: 12
+      window_seconds: 60
+    ip_low_value:
+      threshold: 10
+      window_seconds: 60
+      low_value_amount: 200
+
+development:
+  <<: *defaults
